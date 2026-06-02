@@ -30,8 +30,14 @@ export default function App() {
   
   const [rememberMetadata, setRememberMetadata] = useState(false);
 
+  const safeStorage = {
+    get: (key: string) => { try { return localStorage.getItem(key); } catch { return null; } },
+    set: (key: string, val: string) => { try { localStorage.setItem(key, val); } catch {} },
+    remove: (key: string) => { try { localStorage.removeItem(key); } catch {} }
+  };
+
   useEffect(() => {
-    setRememberMetadata(localStorage.getItem("rememberMetadata") === "true");
+    setRememberMetadata(safeStorage.get("rememberMetadata") === "true");
   }, []);
 
   const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
@@ -62,17 +68,17 @@ export default function App() {
       let finalYear = data.year || "";
       let finalGenre = data.genre || "";
 
-      if (localStorage.getItem("rememberMetadata") === "true") {
-        const memAlbumArtist = localStorage.getItem("memAlbumArtist");
+      if (safeStorage.get("rememberMetadata") === "true") {
+        const memAlbumArtist = safeStorage.get("memAlbumArtist");
         if (memAlbumArtist !== null) finalAlbumArtist = memAlbumArtist;
         
-        const memAlbum = localStorage.getItem("memAlbum");
+        const memAlbum = safeStorage.get("memAlbum");
         if (memAlbum !== null) finalAlbum = memAlbum;
 
-        const memYear = localStorage.getItem("memYear");
+        const memYear = safeStorage.get("memYear");
         if (memYear !== null) finalYear = memYear;
 
-        const memGenre = localStorage.getItem("memGenre");
+        const memGenre = safeStorage.get("memGenre");
         if (memGenre !== null) finalGenre = memGenre;
       }
 
@@ -281,7 +287,7 @@ export default function App() {
                         value={metadata.albumArtist}
                         onChange={(e) => {
                           setMetadata({ ...metadata, albumArtist: e.target.value });
-                          if (rememberMetadata) localStorage.setItem("memAlbumArtist", e.target.value);
+                          if (rememberMetadata) safeStorage.set("memAlbumArtist", e.target.value);
                         }}
                         className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
                       />
@@ -294,7 +300,7 @@ export default function App() {
                         value={metadata.album}
                         onChange={(e) => {
                           setMetadata({ ...metadata, album: e.target.value });
-                          if (rememberMetadata) localStorage.setItem("memAlbum", e.target.value);
+                          if (rememberMetadata) safeStorage.set("memAlbum", e.target.value);
                         }}
                         className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
                       />
@@ -308,7 +314,7 @@ export default function App() {
                           value={metadata.year}
                           onChange={(e) => {
                             setMetadata({ ...metadata, year: e.target.value });
-                            if (rememberMetadata) localStorage.setItem("memYear", e.target.value);
+                            if (rememberMetadata) safeStorage.set("memYear", e.target.value);
                           }}
                           className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
                         />
@@ -321,7 +327,7 @@ export default function App() {
                           value={metadata.genre}
                           onChange={(e) => {
                             setMetadata({ ...metadata, genre: e.target.value });
-                            if (rememberMetadata) localStorage.setItem("memGenre", e.target.value);
+                            if (rememberMetadata) safeStorage.set("memGenre", e.target.value);
                           }}
                           className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
                         />
@@ -341,17 +347,17 @@ export default function App() {
                     <div className="flex items-center gap-2 mt-1 md:col-span-2 bg-neutral-900 border border-neutral-800 p-3 rounded-xl cursor-pointer hover:bg-neutral-800/50 transition-colors" onClick={() => {
                         const newVal = !rememberMetadata;
                         setRememberMetadata(newVal);
-                        localStorage.setItem("rememberMetadata", String(newVal));
+                        safeStorage.set("rememberMetadata", String(newVal));
                         if (newVal) {
-                          localStorage.setItem("memAlbumArtist", metadata.albumArtist);
-                          localStorage.setItem("memAlbum", metadata.album);
-                          localStorage.setItem("memYear", metadata.year);
-                          localStorage.setItem("memGenre", metadata.genre);
+                          safeStorage.set("memAlbumArtist", metadata.albumArtist);
+                          safeStorage.set("memAlbum", metadata.album);
+                          safeStorage.set("memYear", metadata.year);
+                          safeStorage.set("memGenre", metadata.genre);
                         } else {
-                          localStorage.removeItem("memAlbumArtist");
-                          localStorage.removeItem("memAlbum");
-                          localStorage.removeItem("memYear");
-                          localStorage.removeItem("memGenre");
+                          safeStorage.remove("memAlbumArtist");
+                          safeStorage.remove("memAlbum");
+                          safeStorage.remove("memYear");
+                          safeStorage.remove("memGenre");
                         }
                     }}>
                       <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 border ${rememberMetadata ? 'bg-purple-500 border-purple-500' : 'bg-neutral-950 border-neutral-700'}`}>
