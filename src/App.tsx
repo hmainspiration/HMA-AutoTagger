@@ -3,10 +3,50 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, FormEvent, useRef, useEffect } from "react";
+import { useState, FormEvent, useRef, useEffect, Component, ReactNode, ErrorInfo } from "react";
 import { Search, Download, Music, AlertCircle, Loader2, Upload } from "lucide-react";
 
-export default function App() {
+const safeStorage = {
+  get: (key: string) => { 
+    try { return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null; } catch { return null; } 
+  },
+  set: (key: string, val: string) => { 
+    try { if (typeof window !== 'undefined') window.localStorage.setItem(key, val); } catch {} 
+  },
+  remove: (key: string) => { 
+    try { if (typeof window !== 'undefined') window.localStorage.removeItem(key); } catch {} 
+  }
+};
+
+class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: {children: ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+          <h2 className="text-xl font-bold mb-2">Oops, la aplicación falló.</h2>
+          <p className="text-sm text-neutral-400 max-w-md">El navegador bloqueó un script (probablemente modo incógnito o webview restringe almacenamiento). Reinicia la app o intenta desde el Chrome normal.</p>
+          <pre className="mt-4 p-4 bg-neutral-900 border border-neutral-800 rounded text-xs text-red-400 max-w-full overflow-x-auto">
+            {this.state.error?.toString()}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function MainApp() {
   const [url, setUrl] = useState("");
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [loadingProcess, setLoadingProcess] = useState(false);
@@ -29,12 +69,6 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [rememberMetadata, setRememberMetadata] = useState(false);
-
-  const safeStorage = {
-    get: (key: string) => { try { return localStorage.getItem(key); } catch { return null; } },
-    set: (key: string, val: string) => { try { localStorage.setItem(key, val); } catch {} },
-    remove: (key: string) => { try { localStorage.removeItem(key); } catch {} }
-  };
 
   useEffect(() => {
     setRememberMetadata(safeStorage.get("rememberMetadata") === "true");
@@ -166,7 +200,7 @@ export default function App() {
           <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-tr from-purple-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
             <Music className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">AutoTagger V.4</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">AutoTagger V.5</h1>
           <p className="text-neutral-400 text-xs sm:text-sm max-w-sm px-4">
             Descarga audios de YouTube y etiquétalos automáticamente con metadatos reales e imágenes de alta calidad.
           </p>
@@ -415,5 +449,13 @@ export default function App() {
 
       </main>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <MainApp />
+    </ErrorBoundary>
   );
 }
