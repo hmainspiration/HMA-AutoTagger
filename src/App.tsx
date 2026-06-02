@@ -200,7 +200,7 @@ function MainApp() {
           <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-tr from-purple-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
             <Music className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">AutoTagger V.6</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">AutoTagger V.7</h1>
           <p className="text-neutral-400 text-xs sm:text-sm max-w-sm px-4">
             Descarga audios de YouTube y etiquétalos automáticamente con metadatos reales e imágenes de alta calidad.
           </p>
@@ -222,7 +222,7 @@ function MainApp() {
             className="flex items-center justify-center gap-2 bg-white text-black font-medium px-6 py-3 rounded-xl hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-white/50 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none"
           >
             {loadingSearch ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            Buscar
+            <span>Buscar</span>
           </button>
         </form>
 
@@ -435,7 +435,7 @@ function MainApp() {
                       ) : (
                         <>
                           <Download className="w-5 h-5 sm:w-6 sm:h-6" />
-                          2. Procesar e Inyectar Metadatos
+                          <span>2. Procesar e Inyectar Metadatos</span>
                         </>
                       )}
                     </button>
