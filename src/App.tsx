@@ -200,7 +200,7 @@ function MainApp() {
           <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-tr from-purple-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
             <Music className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">AutoTagger V.5</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">AutoTagger V.6</h1>
           <p className="text-neutral-400 text-xs sm:text-sm max-w-sm px-4">
             Descarga audios de YouTube y etiquétalos automáticamente con metadatos reales e imágenes de alta calidad.
           </p>
@@ -253,25 +253,24 @@ function MainApp() {
                </button>
             </div>
 
-            {activeTab === "download" && (
-              <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-4">
-                <p className="text-xs sm:text-sm text-neutral-300">
-                  Descarga el audio base gratuitamente desde este integrador externo, y luego dirígete a la pestaña <b>Paso 2</b> para inyectar los metadatos.
-                </p>
-                <div className="w-full h-[400px] sm:h-[600px] border border-neutral-800 rounded-xl overflow-hidden bg-white">
-                  <iframe 
-                    src={y2mateUrl} 
-                    className="w-full h-full border-0" 
-                    title="Y2mate Download Pannel"
-                    sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
-                  />
-                </div>
+            {/* Tab: Download - always rendered to keep iframe state but hidden via css */}
+            <div className={`bg-neutral-900/50 border border-neutral-800 rounded-2xl p-4 sm:p-6 gap-4 ${activeTab === "download" ? "flex flex-col" : "hidden"}`}>
+              <p className="text-xs sm:text-sm text-neutral-300">
+                Descarga el audio base gratuitamente desde este integrador externo, y luego dirígete a la pestaña <b>Paso 2</b> para inyectar los metadatos.
+              </p>
+              <div className="w-full h-[400px] sm:h-[600px] border border-neutral-800 rounded-xl overflow-hidden bg-white">
+                <iframe 
+                  src={y2mateUrl} 
+                  className="w-full h-full border-0" 
+                  title="Y2mate Download Pannel"
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
+                />
               </div>
-            )}
+            </div>
 
-            {activeTab === "tag" && (
-              <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-4 sm:p-6 flex flex-col md:flex-row gap-6 sm:gap-8">
-                {/* Cover Art */}
+            {/* Tab: Tag - always rendered but hidden via css */}
+            <div className={`bg-neutral-900/50 border border-neutral-800 rounded-2xl p-4 sm:p-6 md:flex-row gap-6 sm:gap-8 ${activeTab === "tag" ? "flex flex-col" : "hidden"}`}>
+              {/* Cover Art */}
                 <div className="flex flex-col gap-4 w-full md:w-56 lg:w-64 shrink-0 mx-auto max-w-[240px] md:max-w-none">
                    <div className="aspect-square bg-neutral-800 rounded-xl overflow-hidden border border-neutral-700/50 relative group shadow-2xl">
                      {metadata.coverUrl ? (
@@ -443,7 +442,6 @@ function MainApp() {
                   </div>
                 </div>
               </div>
-            )}
           </div>
         )}
 
