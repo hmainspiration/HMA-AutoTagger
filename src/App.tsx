@@ -24,32 +24,17 @@ export default function App() {
     coverUrl: string;
   } | null>(null);
 
+  const [activeTab, setActiveTab] = useState<"download" | "tag">("download");
   const [manualFile, setManualFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // We keep the old fetch logic but wrap it since they all fail usually
-  const fetchCobaltDownloadUrl = async (videoUrl: string): Promise<string> => {
-    const COBALT_INSTANCES = [
-      "https://co.wuk.sh", "https://cobalt.qewertyy.dev", "https://api.cobalt.tools"
-    ];
-    for (const instance of COBALT_INSTANCES) {
-      try {
-        const res = await fetch(instance, {
-          method: "POST", headers: { "Accept": "application/json", "Content-Type": "application/json" },
-          body: JSON.stringify({ url: videoUrl, downloadMode: "audio" })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.url) return data.url;
-        }
-      } catch (e) {
-        // failed
-      }
-    }
-    throw new Error("Los servidores gratuitos de extracción de YouTube están bloqueando el tráfico. Sube el MP3 manualmente.");
-  };
+  const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
+  const videoId = videoIdMatch ? videoIdMatch[1] : null;
+  const y2mateUrl = videoId ? `https://es1.y2mate.tube/convert/?videoId=${videoId}` : `https://es1.y2mate.tube/`;
 
+  // Remove direct fetch logic since it's blocked by YouTube
   const handleSearch = async (e: FormEvent) => {
+
     e.preventDefault();
     if (!url.trim()) return;
     
@@ -84,33 +69,18 @@ export default function App() {
   };
 
   const handleProcess = async () => {
-    if (!metadata || !url) return;
+    if (!metadata || !url || !manualFile) {
+      setError("Por favor, asegúrate de haber subido el archivo MP3 manualmente antes de procesar.");
+      return;
+    }
 
     setError(null);
     setLoadingProcess(true);
-    setProcessStage("Buscando enlace de descarga directa...");
 
     try {
-      let audioBlob: Blob;
-
-      if (manualFile) {
-        setProcessStage("Subiendo archivo local...");
-        audioBlob = manualFile;
-      } else {
-        setProcessStage("Buscando enlace de descarga de YouTube...");
-        const directAudioUrl = await fetchCobaltDownloadUrl(url);
-        
-        setProcessStage("Descargando archivo de audio desde YouTube...");
-        const audioReq = await fetch(directAudioUrl);
-        if (!audioReq.ok) {
-          throw new Error("No se pudo descargar el archivo de audio base del servidor de origen.");
-        }
-        audioBlob = await audioReq.blob();
-      }
-
       setProcessStage("Inyectando carátula y etiquetas ID3 en el servidor...");
       const formData = new FormData();
-      formData.append("audio", audioBlob, "audio.mp3");
+      formData.append("audio", manualFile, manualFile.name || "audio.mp3");
       formData.append("title", metadata.title || "");
       formData.append("artist", metadata.artist || "");
       formData.append("albumArtist", metadata.albumArtist || "");
@@ -165,7 +135,7 @@ export default function App() {
           <div className="w-16 h-16 bg-gradient-to-tr from-purple-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
             <Music className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight text-white">AutoTagger V.2</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-white">AutoTagger V.3</h1>
           <p className="text-neutral-400 text-sm max-w-sm">
             Descarga audios de YouTube y etiquétalos automáticamente con metadatos reales e imágenes de alta calidad.
           </p>
@@ -199,151 +169,182 @@ export default function App() {
           </div>
         )}
 
-        {/* Metadata Editor & Preview */}
+        {/* Metadata & Process Area */}
         {metadata && (
-          <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6 flex flex-col md:flex-row gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Cover Art */}
-            <div className="flex flex-col gap-4 w-full md:w-64 shrink-0">
-               <div className="aspect-square bg-neutral-800 rounded-xl overflow-hidden border border-neutral-700/50 relative group shadow-2xl">
-                 {metadata.coverUrl ? (
-                    <img 
-                      src={metadata.coverUrl} 
-                      alt="Cover Art" 
-                      className="w-full h-full object-cover"
-                      crossOrigin="anonymous"
-                    />
-                 ) : (
-                    <div className="w-full h-full flex items-center justify-center text-neutral-500">
-                      <Music className="w-12 h-12 opacity-50" />
-                    </div>
-                 )}
-               </div>
+          <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Steps Navigation */}
+            <div className="flex bg-neutral-900 border border-neutral-800 rounded-xl p-1 shadow-lg">
+               <button 
+                 onClick={() => setActiveTab("download")}
+                 className={`flex-1 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "download" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
+               >
+                 Paso 1: Descargar MP3 Gratis
+               </button>
+               <button
+                 onClick={() => setActiveTab("tag")} 
+                 className={`flex-1 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "tag" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
+               >
+                 Paso 2: Subir y Etiquetar MP3
+               </button>
             </div>
 
-            {/* Editable Fields */}
-            <div className="flex-1 flex flex-col gap-5">
-              <h3 className="text-lg font-medium text-white mb-1">Editar Metadatos</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5 md:col-span-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Título</label>
-                  <input
-                    type="text"
-                    value={metadata.title}
-                    onChange={(e) => setMetadata({ ...metadata, title: e.target.value })}
-                    className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
-                  />
-                </div>
-                
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Artista</label>
-                  <input
-                    type="text"
-                    value={metadata.artist}
-                    onChange={(e) => setMetadata({ ...metadata, artist: e.target.value })}
-                    className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Intérprete del Álbum</label>
-                  <input
-                    type="text"
-                    value={metadata.albumArtist}
-                    onChange={(e) => setMetadata({ ...metadata, albumArtist: e.target.value })}
-                    className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5 md:col-span-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Álbum</label>
-                  <input
-                    type="text"
-                    value={metadata.album}
-                    onChange={(e) => setMetadata({ ...metadata, album: e.target.value })}
-                    className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 text-left sm:grid-cols-3 gap-4 md:col-span-2">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Año</label>
-                    <input
-                      type="text"
-                      value={metadata.year}
-                      onChange={(e) => setMetadata({ ...metadata, year: e.target.value })}
-                      className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Género</label>
-                    <input
-                      type="text"
-                      value={metadata.genre}
-                      onChange={(e) => setMetadata({ ...metadata, genre: e.target.value })}
-                      className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Pista</label>
-                    <input
-                      type="text"
-                      value={metadata.trackNumber}
-                      onChange={(e) => setMetadata({ ...metadata, trackNumber: e.target.value })}
-                      className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Solucion Definitiva: Subir MP3 */}
-              <div className="mt-4 pt-4 border-t border-neutral-800/50">
-                <p className="text-xs text-neutral-400 mb-4 bg-neutral-800/50 p-3 rounded-lg border border-neutral-800">
-                  <strong className="text-white block mb-1">Solución Definitiva a Bloqueos:</strong>
-                  Si el botón "Buscar y Descargar MP3" falla por CORS/Bloqueo (lo más común), descarga tu MP3 manualmente primero y <b>súbelo aquí</b> para etiquetarlo con estos metadatos.
+            {activeTab === "download" && (
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6 flex flex-col gap-4">
+                <p className="text-sm text-neutral-300">
+                  Descarga el audio base gratuitamente desde este integrador externo, y luego dirígete a la pestaña <b>Paso 2</b> para inyectar los metadatos.
                 </p>
-                
-                <input 
-                  type="file" 
-                  accept="audio/mp3,audio/*" 
-                  ref={fileInputRef}
-                  className="hidden" 
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files.length > 0) {
-                      setManualFile(e.target.files[0]);
-                    }
-                  }}
-                />
-                
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full mb-3 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-purple-500/30 hover:border-purple-400 bg-purple-500/5 text-purple-200 font-medium px-4 py-6 rounded-xl transition-all"
-                >
-                  <Upload className="w-6 h-6 text-purple-400" />
-                  <span>{manualFile ? `Archivo seleccionado: ${manualFile.name}` : "Sube el MP3 aquí para Etiquetarlo"}</span>
-                </button>
-
-                <button
-                  onClick={handleProcess}
-                  disabled={loadingProcess}
-                  className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-medium px-6 py-3.5 rounded-xl hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-purple-500/50 active:scale-[0.99] transition-all disabled:opacity-50 disabled:pointer-events-none shadow-lg shadow-purple-500/10"
-                >
-                  {loadingProcess ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>{processStage || "Procesando..."}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-5 h-5" />
-                      {manualFile ? "Procesar y Descargar MP3" : "Intentar Extracción Directa de YouTube"}
-                    </>
-                  )}
-                </button>
+                <div className="w-full h-[600px] border border-neutral-800 rounded-xl overflow-hidden bg-white">
+                  <iframe 
+                    src={y2mateUrl} 
+                    className="w-full h-full border-0" 
+                    title="Y2mate Download Pannel"
+                    sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            {activeTab === "tag" && (
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6 flex flex-col md:flex-row gap-8">
+                {/* Cover Art */}
+                <div className="flex flex-col gap-4 w-full md:w-64 shrink-0">
+                   <div className="aspect-square bg-neutral-800 rounded-xl overflow-hidden border border-neutral-700/50 relative group shadow-2xl">
+                     {metadata.coverUrl ? (
+                        <img 
+                          src={metadata.coverUrl} 
+                          alt="Cover Art" 
+                          className="w-full h-full object-cover"
+                          crossOrigin="anonymous"
+                        />
+                     ) : (
+                        <div className="w-full h-full flex items-center justify-center text-neutral-500">
+                          <Music className="w-12 h-12 opacity-50" />
+                        </div>
+                     )}
+                   </div>
+                </div>
+
+                {/* Editable Fields */}
+                <div className="flex-1 flex flex-col gap-5">
+                  <h3 className="text-lg font-medium text-white mb-1">Revisar e Inyectar Metadatos</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5 md:col-span-2">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Título</label>
+                      <input
+                        type="text"
+                        value={metadata.title}
+                        onChange={(e) => setMetadata({ ...metadata, title: e.target.value })}
+                        className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
+                      />
+                    </div>
+                    
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Artista</label>
+                      <input
+                        type="text"
+                        value={metadata.artist}
+                        onChange={(e) => setMetadata({ ...metadata, artist: e.target.value })}
+                        className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Intérprete del Álbum</label>
+                      <input
+                        type="text"
+                        value={metadata.albumArtist}
+                        onChange={(e) => setMetadata({ ...metadata, albumArtist: e.target.value })}
+                        className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 md:col-span-2">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Álbum</label>
+                      <input
+                        type="text"
+                        value={metadata.album}
+                        onChange={(e) => setMetadata({ ...metadata, album: e.target.value })}
+                        className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 text-left sm:grid-cols-3 gap-4 md:col-span-2">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Año</label>
+                        <input
+                          type="text"
+                          value={metadata.year}
+                          onChange={(e) => setMetadata({ ...metadata, year: e.target.value })}
+                          className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Género</label>
+                        <input
+                          type="text"
+                          value={metadata.genre}
+                          onChange={(e) => setMetadata({ ...metadata, genre: e.target.value })}
+                          className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Pista</label>
+                        <input
+                          type="text"
+                          value={metadata.trackNumber}
+                          onChange={(e) => setMetadata({ ...metadata, trackNumber: e.target.value })}
+                          className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Subir MP3 y Procesar */}
+                  <div className="mt-4 pt-4 border-t border-neutral-800/50">
+                    <input 
+                      type="file" 
+                      accept="audio/mp3,audio/*" 
+                      ref={fileInputRef}
+                      className="hidden" 
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                          setManualFile(e.target.files[0]);
+                        }
+                      }}
+                    />
+                    
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full mb-3 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-purple-500/30 hover:border-purple-400 bg-purple-500/5 text-purple-200 font-medium px-4 py-8 rounded-xl transition-all"
+                    >
+                      <Upload className="w-8 h-8 text-purple-400 mb-1" />
+                      <span className="text-lg">{manualFile ? `Seleccionado: ${manualFile.name}` : "1. Haz click aquí para subir el MP3"}</span>
+                    </button>
+
+                    <button
+                      onClick={handleProcess}
+                      disabled={loadingProcess || !manualFile}
+                      className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-medium px-6 py-4 rounded-xl hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-purple-500/50 active:scale-[0.99] transition-all disabled:opacity-50 disabled:pointer-events-none shadow-lg shadow-purple-500/10 text-lg"
+                    >
+                      {loadingProcess ? (
+                        <>
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                          <span>{processStage || "Procesando..."}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-6 h-6" />
+                          2. Procesar e Inyectar Metadatos
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
