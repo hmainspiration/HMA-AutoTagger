@@ -3,91 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, FormEvent } from "react";
-import { Search, Download, Music, AlertCircle, Loader2 } from "lucide-react";
-
-const COBALT_INSTANCES = [
-  "https://co.wuk.sh",
-  "https://cobalt.qewertyy.dev",
-  "https://cobalt.api.timelessnesses.me",
-  "https://api.cobalt.expert",
-  "https://api.cobalt.xn--9zw.com",
-  "https://co.eepy.moe",
-  "https://api.cobalt.tools"
-];
-
-const fetchCobaltDownloadUrl = async (videoUrl: string): Promise<string> => {
-  const videoIdMatch = videoUrl.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
-  const videoId = videoIdMatch ? videoIdMatch[1] : null;
-
-  for (const instance of COBALT_INSTANCES) {
-    try {
-      // 1. Try V10 format
-      const res = await fetch(instance, {
-        method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ url: videoUrl, downloadMode: "audio" })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.url) {
-          return data.url;
-        }
-      } else if (res.status === 404 || res.status === 405) {
-        // Try V7 format (/api/json)
-        const v7Res = await fetch(`${instance}/api/json`, {
-          method: "POST",
-          headers: {
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ url: videoUrl, isAudioOnly: true })
-        });
-        if (v7Res.ok) {
-          const v7Data = await v7Res.json();
-          if (v7Data && v7Data.url) {
-            return v7Data.url;
-          }
-        }
-      }
-    } catch (e: any) {
-      console.warn(`Cobalt instance ${instance} failed:`, e.message);
-    }
-  }
-
-  // Fallback to Invidious API
-  if (videoId) {
-    const invidiousInstances = [
-      "https://invidious.slipfox.xyz",
-      "https://inv.tux.pizza",
-      "https://invidious.protokolla.fi",
-      "https://iv.melmac.space"
-    ];
-
-    for (const host of invidiousInstances) {
-      try {
-        const invRes = await fetch(`${host}/api/v1/videos/${videoId}`);
-        if (invRes.ok) {
-          const data = await invRes.json();
-          const audioFormats = data.adaptiveFormats 
-            ? data.adaptiveFormats.filter((f: any) => f.type.startsWith("audio")) 
-            : [];
-          if (audioFormats.length > 0) {
-            return audioFormats[0].url;
-          }
-        }
-      } catch (e) {
-        console.warn(`Invidious instance ${host} failed:`, e);
-      }
-    }
-  }
-
-  throw new Error("No se pudo obtener un enlace de descarga directa de ninguno de los servidores gratuitos (Cobalt/Invidious). Por favor, intenta de nuevo o con un enlace diferente.");
-};
+import { useState, FormEvent, useRef } from "react";
+import { Search, Download, Music, AlertCircle, Loader2, Upload } from "lucide-react";
 
 export default function App() {
   const [url, setUrl] = useState("");
@@ -107,6 +24,31 @@ export default function App() {
     coverUrl: string;
   } | null>(null);
 
+  const [manualFile, setManualFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // We keep the old fetch logic but wrap it since they all fail usually
+  const fetchCobaltDownloadUrl = async (videoUrl: string): Promise<string> => {
+    const COBALT_INSTANCES = [
+      "https://co.wuk.sh", "https://cobalt.qewertyy.dev", "https://api.cobalt.tools"
+    ];
+    for (const instance of COBALT_INSTANCES) {
+      try {
+        const res = await fetch(instance, {
+          method: "POST", headers: { "Accept": "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ url: videoUrl, downloadMode: "audio" })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.url) return data.url;
+        }
+      } catch (e) {
+        // failed
+      }
+    }
+    throw new Error("Los servidores gratuitos de extracción de YouTube están bloqueando el tráfico. Sube el MP3 manualmente.");
+  };
+
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
@@ -114,6 +56,7 @@ export default function App() {
     setError(null);
     setLoadingSearch(true);
     setMetadata(null);
+    setManualFile(null);
 
     try {
       const res = await fetch(`/api/search?url=${encodeURIComponent(url)}`);
@@ -148,18 +91,23 @@ export default function App() {
     setProcessStage("Buscando enlace de descarga directa...");
 
     try {
-      // 1. Obtener la URL de descarga directa de audio desde el Frontend
-      const directAudioUrl = await fetchCobaltDownloadUrl(url);
-      
-      // 2. Descargar el archivo de audio directamente en el navegador del cliente (IP residencial)
-      setProcessStage("Descargando archivo de audio desde YouTube...");
-      const audioReq = await fetch(directAudioUrl);
-      if (!audioReq.ok) {
-        throw new Error("No se pudo descargar el archivo de audio base del servidor de origen.");
-      }
-      const audioBlob = await audioReq.blob();
+      let audioBlob: Blob;
 
-      // 3. Crear el FormData con el Blob y los metadatos de ID3
+      if (manualFile) {
+        setProcessStage("Subiendo archivo local...");
+        audioBlob = manualFile;
+      } else {
+        setProcessStage("Buscando enlace de descarga de YouTube...");
+        const directAudioUrl = await fetchCobaltDownloadUrl(url);
+        
+        setProcessStage("Descargando archivo de audio desde YouTube...");
+        const audioReq = await fetch(directAudioUrl);
+        if (!audioReq.ok) {
+          throw new Error("No se pudo descargar el archivo de audio base del servidor de origen.");
+        }
+        audioBlob = await audioReq.blob();
+      }
+
       setProcessStage("Inyectando carátula y etiquetas ID3 en el servidor...");
       const formData = new FormData();
       formData.append("audio", audioBlob, "audio.mp3");
@@ -172,7 +120,6 @@ export default function App() {
       formData.append("trackNumber", metadata.trackNumber || "1");
       formData.append("coverUrl", metadata.coverUrl || "");
 
-      // 4. Enviar el Form con el audio y metadatos a nuestro servidor para que use node-id3
       const res = await fetch("/api/process", {
         method: "POST",
         body: formData,
@@ -184,11 +131,10 @@ export default function App() {
            const errorData = await res.json();
            throw new Error(errorData.error || "Fallo al procesar las etiquetas del audio.");
         } else {
-           throw new Error(`El servidor de Render devolvió el error: ${res.status}`);
+           throw new Error(`El servidor devolvió el error: ${res.status}`);
         }
       }
 
-      // 5. Descargar el MP3 etiquetado final
       setProcessStage("¡Listo! Iniciando descarga en tu dispositivo...");
       const blob = await res.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
@@ -219,7 +165,7 @@ export default function App() {
           <div className="w-16 h-16 bg-gradient-to-tr from-purple-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
             <Music className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight text-white">AutoTagger</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-white">AutoTagger V.2</h1>
           <p className="text-neutral-400 text-sm max-w-sm">
             Descarga audios de YouTube y etiquétalos automáticamente con metadatos reales e imágenes de alta calidad.
           </p>
@@ -352,7 +298,33 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Solucion Definitiva: Subir MP3 */}
               <div className="mt-4 pt-4 border-t border-neutral-800/50">
+                <p className="text-xs text-neutral-400 mb-4 bg-neutral-800/50 p-3 rounded-lg border border-neutral-800">
+                  <strong className="text-white block mb-1">Solución Definitiva a Bloqueos:</strong>
+                  Si el botón "Buscar y Descargar MP3" falla por CORS/Bloqueo (lo más común), descarga tu MP3 manualmente primero y <b>súbelo aquí</b> para etiquetarlo con estos metadatos.
+                </p>
+                
+                <input 
+                  type="file" 
+                  accept="audio/mp3,audio/*" 
+                  ref={fileInputRef}
+                  className="hidden" 
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      setManualFile(e.target.files[0]);
+                    }
+                  }}
+                />
+                
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full mb-3 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-purple-500/30 hover:border-purple-400 bg-purple-500/5 text-purple-200 font-medium px-4 py-6 rounded-xl transition-all"
+                >
+                  <Upload className="w-6 h-6 text-purple-400" />
+                  <span>{manualFile ? `Archivo seleccionado: ${manualFile.name}` : "Sube el MP3 aquí para Etiquetarlo"}</span>
+                </button>
+
                 <button
                   onClick={handleProcess}
                   disabled={loadingProcess}
@@ -366,7 +338,7 @@ export default function App() {
                   ) : (
                     <>
                       <Download className="w-5 h-5" />
-                      Procesar y Descargar MP3
+                      {manualFile ? "Procesar y Descargar MP3" : "Intentar Extracción Directa de YouTube"}
                     </>
                   )}
                 </button>
