@@ -6,10 +6,94 @@
 import { useState, FormEvent } from "react";
 import { Search, Download, Music, AlertCircle, Loader2 } from "lucide-react";
 
+const COBALT_INSTANCES = [
+  "https://co.wuk.sh",
+  "https://cobalt.qewertyy.dev",
+  "https://cobalt.api.timelessnesses.me",
+  "https://api.cobalt.expert",
+  "https://api.cobalt.xn--9zw.com",
+  "https://co.eepy.moe",
+  "https://api.cobalt.tools"
+];
+
+const fetchCobaltDownloadUrl = async (videoUrl: string): Promise<string> => {
+  const videoIdMatch = videoUrl.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
+  const videoId = videoIdMatch ? videoIdMatch[1] : null;
+
+  for (const instance of COBALT_INSTANCES) {
+    try {
+      // 1. Try V10 format
+      const res = await fetch(instance, {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ url: videoUrl, downloadMode: "audio" })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.url) {
+          return data.url;
+        }
+      } else if (res.status === 404 || res.status === 405) {
+        // Try V7 format (/api/json)
+        const v7Res = await fetch(`${instance}/api/json`, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ url: videoUrl, isAudioOnly: true })
+        });
+        if (v7Res.ok) {
+          const v7Data = await v7Res.json();
+          if (v7Data && v7Data.url) {
+            return v7Data.url;
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn(`Cobalt instance ${instance} failed:`, e.message);
+    }
+  }
+
+  // Fallback to Invidious API
+  if (videoId) {
+    const invidiousInstances = [
+      "https://invidious.slipfox.xyz",
+      "https://inv.tux.pizza",
+      "https://invidious.protokolla.fi",
+      "https://iv.melmac.space"
+    ];
+
+    for (const host of invidiousInstances) {
+      try {
+        const invRes = await fetch(`${host}/api/v1/videos/${videoId}`);
+        if (invRes.ok) {
+          const data = await invRes.json();
+          const audioFormats = data.adaptiveFormats 
+            ? data.adaptiveFormats.filter((f: any) => f.type.startsWith("audio")) 
+            : [];
+          if (audioFormats.length > 0) {
+            return audioFormats[0].url;
+          }
+        }
+      } catch (e) {
+        console.warn(`Invidious instance ${host} failed:`, e);
+      }
+    }
+  }
+
+  throw new Error("No se pudo obtener un enlace de descarga directa de ninguno de los servidores gratuitos (Cobalt/Invidious). Por favor, intenta de nuevo o con un enlace diferente.");
+};
+
 export default function App() {
   const [url, setUrl] = useState("");
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [loadingProcess, setLoadingProcess] = useState(false);
+  const [processStage, setProcessStage] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const [metadata, setMetadata] = useState<{
@@ -61,28 +145,51 @@ export default function App() {
 
     setError(null);
     setLoadingProcess(true);
+    setProcessStage("Buscando enlace de descarga directa...");
 
     try {
+      // 1. Obtener la URL de descarga directa de audio desde el Frontend
+      const directAudioUrl = await fetchCobaltDownloadUrl(url);
+      
+      // 2. Descargar el archivo de audio directamente en el navegador del cliente (IP residencial)
+      setProcessStage("Descargando archivo de audio desde YouTube...");
+      const audioReq = await fetch(directAudioUrl);
+      if (!audioReq.ok) {
+        throw new Error("No se pudo descargar el archivo de audio base del servidor de origen.");
+      }
+      const audioBlob = await audioReq.blob();
+
+      // 3. Crear el FormData con el Blob y los metadatos de ID3
+      setProcessStage("Inyectando carátula y etiquetas ID3 en el servidor...");
+      const formData = new FormData();
+      formData.append("audio", audioBlob, "audio.mp3");
+      formData.append("title", metadata.title || "");
+      formData.append("artist", metadata.artist || "");
+      formData.append("albumArtist", metadata.albumArtist || "");
+      formData.append("album", metadata.album || "");
+      formData.append("year", metadata.year || "");
+      formData.append("genre", metadata.genre || "");
+      formData.append("trackNumber", metadata.trackNumber || "1");
+      formData.append("coverUrl", metadata.coverUrl || "");
+
+      // 4. Enviar el Form con el audio y metadatos a nuestro servidor para que use node-id3
       const res = await fetch("/api/process", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url,
-          ...metadata
-        }),
+        body: formData,
       });
 
       if (!res.ok) {
         const contentType = res.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
            const errorData = await res.json();
-           throw new Error(errorData.error || "Failed to process audio");
+           throw new Error(errorData.error || "Fallo al procesar las etiquetas del audio.");
         } else {
-           throw new Error(`Server returned ${res.status}`);
+           throw new Error(`El servidor de Render devolvió el error: ${res.status}`);
         }
       }
 
-      // Handle file download
+      // 5. Descargar el MP3 etiquetado final
+      setProcessStage("¡Listo! Iniciando descarga en tu dispositivo...");
       const blob = await res.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -95,9 +202,11 @@ export default function App() {
       document.body.removeChild(a);
 
     } catch (err: any) {
-      setError(err.message);
+      console.error(err);
+      setError(err.message || "Error inesperado durante el procesamiento.");
     } finally {
       setLoadingProcess(false);
+      setProcessStage("");
     }
   };
 
@@ -252,7 +361,7 @@ export default function App() {
                   {loadingProcess ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      Procesando...
+                      <span>{processStage || "Procesando..."}</span>
                     </>
                   ) : (
                     <>

@@ -2,8 +2,11 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import NodeID3 from "node-id3";
+import multer from "multer";
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 async function startServer() {
   const app = express();
@@ -76,112 +79,16 @@ async function startServer() {
     }
   });
 
-  app.post("/api/process", async (req, res) => {
+  app.post("/api/process", upload.single("audio"), async (req, res) => {
     try {
-      const { url, title, artist, albumArtist, album, year, genre, trackNumber, coverUrl } = req.body;
-
-      if (!url) {
-        return res.status(400).json({ error: "YouTube URL is required" });
-      }
-
-      console.log("Requesting Cobalt for audio link...", url);
+      const { title, artist, albumArtist, album, year, genre, trackNumber, coverUrl } = req.body;
       
-      const instances = [
-        "https://api.cobalt.tools/", // Official V10 (Requires JWT but might work with browser headers)
-        "https://co.wuk.sh/",
-        "https://cobalt.qewertyy.dev/",
-        "https://cobalt.api.timelessnesses.me/",
-        "https://api.cobalt.expert/",
-        "https://api.cobalt.xn--9zw.com/",
-        "https://co.eepy.moe/"
-      ];
-
-      let downloadUrl = null;
-      let lastError = null;
-
-      // Extract Video ID to fallback to alternative methods if needed
-      const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
-      const videoId = videoIdMatch ? videoIdMatch[1] : null;
-
-      for (const instance of instances) {
-        try {
-          // Attempt V10 format
-          const cobaltRes = await fetch(instance, {
-            method: "POST",
-            headers: {
-              "Accept": "application/json",
-              "Content-Type": "application/json",
-              // Some instances block basic fetches, emulate user agent
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            },
-            body: JSON.stringify({ url, downloadMode: "audio" })
-          });
-
-          if (cobaltRes.ok) {
-            const cobaltData = await cobaltRes.json();
-            if (cobaltData && cobaltData.url) {
-              downloadUrl = cobaltData.url;
-              break; // Success!
-            }
-          } else if (cobaltRes.status === 404) {
-             // Maybe it's a V7 instance? Let's try /api/json
-             const v7Res = await fetch(`${instance}api/json`, {
-                method: "POST",
-                headers: {
-                  "Accept": "application/json",
-                  "Content-Type": "application/json",
-                  "User-Agent": "Mozilla/5.0"
-                },
-                body: JSON.stringify({ url, isAudioOnly: true })
-             });
-             if (v7Res.ok) {
-                 const v7Data = await v7Res.json();
-                 if (v7Data && v7Data.url) {
-                     downloadUrl = v7Data.url;
-                     break;
-                 }
-             }
-          }
-        } catch (err: any) {
-           lastError = err.message;
-        }
+      if (!req.file) {
+        return res.status(400).json({ error: "No se recibió ningún archivo de audio" });
       }
 
-      if (!downloadUrl) {
-         // Final fallback if all Cobalt instances fail or demand JWT
-         // Invidious API returns Googlevideo URLs directly. Usually safe for audio.
-         if (videoId) {
-            console.log("Cobalt instances failed, falling back to Invidious proxy...");
-            try {
-               const invRes = await fetch(`https://invidious.slipfox.xyz/api/v1/videos/${videoId}`);
-               if (invRes.ok) {
-                  const data = await invRes.json();
-                  const audioFormats = data.adaptiveFormats 
-                     ? data.adaptiveFormats.filter((f: any) => f.type.startsWith("audio")) 
-                     : [];
-                  if (audioFormats.length > 0) {
-                     downloadUrl = audioFormats[0].url;
-                  }
-               }
-            } catch (e: any) {
-               console.error("Invidious fallback failed", e);
-            }
-         }
-      }
-
-      if (!downloadUrl) {
-        return res.status(500).json({ 
-           error: "Todos los servidores de descarga gratuitos (Cobalt/Invidious) fallaron o requieren autenticación actualmente. Consulta GitHub de Cobalt para alojar tu propia instancia o intenta más tarde. Útimo error: " + (lastError || "No URL found") 
-        });
-      }
-
-      console.log("Downloading audio from...", downloadUrl);
-      const audioReq = await fetch(downloadUrl);
-      if (!audioReq.ok) {
-        return res.status(500).json({ error: "Failed to download audio from Cobalt link" });
-      }
-      const audioArrayBuffer = await audioReq.arrayBuffer();
-      const audioBuffer = Buffer.from(audioArrayBuffer);
+      const audioBuffer = req.file.buffer;
+      console.log("Recibido archivo de audio de longitud:", audioBuffer.length);
 
       let imageBuffer: Buffer | undefined;
       if (coverUrl) {
