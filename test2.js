@@ -1,0 +1,1 @@
+import ytdl from "youtube-dl-exec"; import ffmpeg from "ffmpeg-static"; console.log("ffmpeg is at", ffmpeg); ytdl("https://www.youtube.com/watch?v=dQw4w9WgXcQ", { extractAudio: true, audioFormat: "mp3", audioQuality: 128, output: "audio.%(ext)s", ffmpegLocation: ffmpeg }).then(() => console.log("Done")).catch(e => console.error("Error:", e.message));

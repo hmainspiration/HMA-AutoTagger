@@ -3,6 +3,10 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import NodeID3 from "node-id3";
 import multer from "multer";
+import ytdl from "youtube-dl-exec";
+import ffmpeg from "ffmpeg-static";
+import fs from "fs";
+import { randomUUID } from "crypto";
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -13,6 +17,54 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+
+  app.post("/api/yt-info", async (req, res) => {
+    try {
+      const { url } = req.body;
+      if (!url) return res.status(400).json({ error: "Ingresa una URL de YouTube" });
+      
+      const info = await ytdl(url, { dumpJson: true });
+      return res.json({
+        title: info.title || "Sin título",
+        thumbnail: info.thumbnail || "",
+        duration: info.duration ? new Date(info.duration * 1000).toISOString().substring(14, 19) : "—",
+        uploader: info.uploader || "Desconocido",
+        view_count: info.view_count ? info.view_count.toLocaleString("es-ES") : "—"
+      });
+    } catch (e: any) {
+      console.error(e);
+      return res.status(400).json({ error: "No se pudo obtener la info o URL inválida" });
+    }
+  });
+
+  app.post("/api/yt-download", async (req, res) => {
+    try {
+      const { url } = req.body;
+      if (!url) return res.status(400).json({ error: "URL requerida" });
+      
+      const id = randomUUID();
+      const tmpFile = path.join(process.cwd(), `tmp_${id}.mp3`);
+      
+      await ytdl(url, {
+        extractAudio: true,
+        audioFormat: "mp3",
+        audioQuality: 128,
+        output: tmpFile,
+        ffmpegLocation: ffmpeg || undefined
+      });
+      
+      if (!fs.existsSync(tmpFile)) {
+        return res.status(500).json({ error: "Fallo al generar el archivo MP3" });
+      }
+      
+      res.download(tmpFile, "audio.mp3", (err) => {
+        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+      });
+    } catch (e: any) {
+      console.error(e);
+      return res.status(400).json({ error: "Fallo al descargar el video" });
+    }
+  });
 
   // API constraints strictly followed from prompt
   app.get("/api/search", async (req, res) => {

@@ -64,6 +64,17 @@ function MainApp() {
     coverUrl: string;
   } | null>(null);
 
+  const [ytInfo, setYtInfo] = useState<{
+    title: string;
+    thumbnail: string;
+    duration: string;
+    uploader: string;
+    view_count: string;
+  } | null>(null);
+
+  const [loadingDownload, setLoadingDownload] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState("");
+
   const [activeTab, setActiveTab] = useState<"download" | "tag">("download");
   const [manualFile, setManualFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,29 +85,38 @@ function MainApp() {
     setRememberMetadata(safeStorage.get("rememberMetadata") === "true");
   }, []);
 
-  const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
-  const videoId = videoIdMatch ? videoIdMatch[1] : null;
-  const y2mateUrl = videoId ? `https://es1.y2mate.tube/convert/?videoId=${videoId}` : `https://es1.y2mate.tube/`;
-
-  // Remove direct fetch logic since it's blocked by YouTube
   const handleSearch = async (e: FormEvent) => {
-
     e.preventDefault();
     if (!url.trim()) return;
     
     setError(null);
     setLoadingSearch(true);
     setMetadata(null);
+    setYtInfo(null);
     setManualFile(null);
 
     try {
-      const res = await fetch(`/api/search?url=${encodeURIComponent(url)}`);
-      if (!res.ok) {
-        const errorData = await res.json();
+      // Run both iTunes search and YouTube info fetch concurrently
+      const [resSearch, resYt] = await Promise.all([
+        fetch(`/api/search?url=${encodeURIComponent(url)}`),
+        fetch("/api/yt-info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url })
+        })
+      ]);
+
+      if (!resSearch.ok) {
+        const errorData = await resSearch.json();
         throw new Error(errorData.error || "Failed to fetch metadata");
       }
+
+      if (resYt.ok) {
+        const ytData = await resYt.json();
+        setYtInfo(ytData);
+      }
       
-      const data = await res.json();
+      const data = await resSearch.json();
       let finalAlbumArtist = data.albumArtist || data.artist || "";
       let finalAlbum = data.album || "";
       let finalYear = data.year || "";
@@ -130,6 +150,73 @@ function MainApp() {
       setError(err.message);
     } finally {
       setLoadingSearch(false);
+    }
+  };
+
+  const handleDownloadBase = async () => {
+    if (!url) return;
+    setError(null);
+    setLoadingDownload(true);
+    setDownloadProgress("Conectando...");
+    
+    try {
+      const res = await fetch("/api/yt-download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url })
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Fallo al descargar el MP3");
+      }
+      
+      setDownloadProgress("Recibiendo archivo...");
+      
+      const total = Number(res.headers.get("Content-Length")) || 0;
+      const reader = res.body?.getReader();
+      const chunks = [];
+      let received = 0;
+      
+      if (reader) {
+        setDownloadProgress("Descargando...");
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            received += value.length;
+            if (total) {
+              const pct = Math.round((received / total) * 100);
+              setDownloadProgress(`Descargando ${pct}%`);
+            }
+          }
+        }
+      }
+      
+      setDownloadProgress("Guardando...");
+      const blob = new Blob(chunks, { type: "audio/mpeg" });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      const safeTitle = (ytInfo?.title || "audio").replace(/[^a-zA-Z0-9_-]/g, "_");
+      a.download = `${safeTitle}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+      
+      // Auto transition to Tag stage or Auto upload to memory?
+      // For now, let user upload manually or we can inject to manualFile!
+      const mp3File = new File([blob], `${safeTitle}.mp3`, { type: "audio/mpeg" });
+      setManualFile(mp3File);
+      setActiveTab("tag");
+
+    } catch (err: any) {
+      setError(err.message || "Error descargando el MP3.");
+    } finally {
+      setLoadingDownload(false);
+      setDownloadProgress("");
     }
   };
 
@@ -200,7 +287,7 @@ function MainApp() {
           <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-tr from-purple-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
             <Music className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">AutoTagger V.7</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">AutoTagger V.9</h1>
           <p className="text-neutral-400 text-xs sm:text-sm max-w-sm px-4">
             Descarga audios de YouTube y etiquétalos automáticamente con metadatos reales e imágenes de alta calidad.
           </p>
@@ -254,18 +341,51 @@ function MainApp() {
             </div>
 
             {/* Tab: Download - always rendered to keep iframe state but hidden via css */}
-            <div className={`bg-neutral-900/50 border border-neutral-800 rounded-2xl p-4 sm:p-6 gap-4 ${activeTab === "download" ? "flex flex-col" : "hidden"}`}>
-              <p className="text-xs sm:text-sm text-neutral-300">
-                Descarga el audio base gratuitamente desde este integrador externo, y luego dirígete a la pestaña <b>Paso 2</b> para inyectar los metadatos.
-              </p>
-              <div className="w-full h-[400px] sm:h-[600px] border border-neutral-800 rounded-xl overflow-hidden bg-white">
-                <iframe 
-                  src={y2mateUrl} 
-                  className="w-full h-full border-0" 
-                  title="Y2mate Download Pannel"
-                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
-                />
+            <div className={`bg-neutral-900/50 border border-neutral-800 rounded-2xl p-4 sm:p-6 gap-6 ${activeTab === "download" ? "flex flex-col" : "hidden"}`}>
+              <div className="flex flex-col gap-2">
+                <h3 className="text-base sm:text-lg font-medium text-white">Generar audio MP3</h3>
+                <p className="text-xs sm:text-sm text-neutral-400">
+                  Descarga el audio original en formato MP3 directamente desde nuestros servidores. Una vez descargado, dirígete al <b>Paso 2</b> para inyectar la información y carátula.
+                </p>
               </div>
+
+              {ytInfo && (
+                <div className="flex flex-col sm:flex-row bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden">
+                  <div className="relative w-full sm:w-48 aspect-video sm:aspect-auto">
+                    <img src={ytInfo.thumbnail} alt="Thumbnail" className="w-full h-full object-cover" />
+                    <div className="absolute bottom-2 right-2 bg-black/80 px-2 py-1 rounded text-[10px] font-mono text-white font-medium">
+                      {ytInfo.duration}
+                    </div>
+                  </div>
+                  <div className="p-4 flex flex-col justify-center gap-2 flex-1 min-w-0">
+                    <h4 className="text-sm font-medium text-white truncate" title={ytInfo.title}>
+                      {ytInfo.title}
+                    </h4>
+                    <div className="flex items-center gap-3 text-xs text-neutral-500">
+                      <span className="flex items-center gap-1.5"><Search className="w-3.5 h-3.5" />{ytInfo.uploader}</span>
+                      <span className="flex items-center gap-1.5"><Search className="w-3.5 h-3.5 opacity-0 absolute" />{ytInfo.view_count} vistas</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleDownloadBase}
+                disabled={loadingDownload}
+                className="w-full flex items-center justify-center gap-3 bg-white text-black font-semibold px-4 py-3 sm:px-6 sm:py-4 rounded-xl hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-white/50 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none text-sm sm:text-base shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+              >
+                {loadingDownload ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>{downloadProgress}</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-5 h-5" />
+                    <span>Descargar MP3 Base (128 kbps)</span>
+                  </>
+                )}
+              </button>
             </div>
 
             {/* Tab: Tag - always rendered but hidden via css */}

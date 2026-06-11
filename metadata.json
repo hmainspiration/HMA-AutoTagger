@@ -1,5 +1,5 @@
 {
-  "name": "AutoTagger V.7",
+  "name": "AutoTagger V.9",
   "description": "Descarga de audios de YouTube y etiquetado con metadatos reales.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
