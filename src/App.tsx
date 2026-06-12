@@ -19,17 +19,15 @@ const safeStorage = {
 };
 
 class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
-  constructor(props: {children: ReactNode}) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-  static getDerivedStateFromError(error: Error) {
+  public state = { hasError: false, error: null as Error | null };
+
+  public static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
   }
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
   }
-  render() {
+  public render() {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 text-center">
@@ -42,7 +40,7 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
         </div>
       );
     }
-    return this.props.children;
+    return (this as any).props.children;
   }
 }
 
@@ -53,16 +51,16 @@ function MainApp() {
   const [processStage, setProcessStage] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const [metadata, setMetadata] = useState<{
-    title: string;
-    artist: string;
-    albumArtist: string;
-    album: string;
-    year: string;
-    genre: string;
-    trackNumber: string;
-    coverUrl: string;
-  } | null>(null);
+  const [metadata, setMetadata] = useState({
+    title: "",
+    artist: "",
+    albumArtist: "",
+    album: "",
+    year: "",
+    genre: "",
+    trackNumber: "1",
+    coverUrl: "",
+  });
 
   const [ytInfo, setYtInfo] = useState<{
     title: string;
@@ -91,7 +89,6 @@ function MainApp() {
     
     setError(null);
     setLoadingSearch(true);
-    setMetadata(null);
     setYtInfo(null);
     setManualFile(null);
 
@@ -221,7 +218,7 @@ function MainApp() {
   };
 
   const handleProcess = async () => {
-    if (!metadata || !url || !manualFile) {
+    if (!manualFile) {
       setError("Por favor, asegúrate de haber subido el archivo MP3 manualmente antes de procesar.");
       return;
     }
@@ -287,7 +284,7 @@ function MainApp() {
           <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-tr from-purple-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
             <Music className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">AutoTagger V.9</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">AutoTagger V.10</h1>
           <p className="text-neutral-400 text-xs sm:text-sm max-w-sm px-4">
             Descarga audios de YouTube y etiquétalos automáticamente con metadatos reales e imágenes de alta calidad.
           </p>
@@ -322,9 +319,8 @@ function MainApp() {
         )}
 
         {/* Metadata & Process Area */}
-        {metadata && (
-          <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Steps Navigation */}
+        <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* Steps Navigation */}
             <div className="flex bg-neutral-900 border border-neutral-800 rounded-xl p-1 shadow-lg">
                <button 
                  onClick={() => setActiveTab("download")}
@@ -371,7 +367,7 @@ function MainApp() {
 
               <button
                 onClick={handleDownloadBase}
-                disabled={loadingDownload}
+                disabled={loadingDownload || !ytInfo}
                 className="w-full flex items-center justify-center gap-3 bg-white text-black font-semibold px-4 py-3 sm:px-6 sm:py-4 rounded-xl hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-white/50 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none text-sm sm:text-base shadow-[0_0_20px_rgba(255,255,255,0.1)]"
               >
                 {loadingDownload ? (
@@ -563,7 +559,6 @@ function MainApp() {
                 </div>
               </div>
           </div>
-        )}
 
       </main>
     </div>

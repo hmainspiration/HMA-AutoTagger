@@ -23,7 +23,7 @@ async function startServer() {
       const { url } = req.body;
       if (!url) return res.status(400).json({ error: "Ingresa una URL de YouTube" });
       
-      const info = await ytdl(url, { dumpJson: true });
+      const info = await ytdl(url, { dumpJson: true }) as any;
       return res.json({
         title: info.title || "Sin título",
         thumbnail: info.thumbnail || "",
