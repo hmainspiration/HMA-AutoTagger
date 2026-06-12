@@ -83,6 +83,10 @@ function MainApp() {
     setRememberMetadata(safeStorage.get("rememberMetadata") === "true");
   }, []);
 
+  const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
+  const videoId = videoIdMatch ? videoIdMatch[1] : null;
+  const y2mateUrl = videoId ? `https://es1.y2mate.tube/convert/?videoId=${videoId}` : `https://es1.y2mate.tube/`;
+
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
@@ -337,51 +341,18 @@ function MainApp() {
             </div>
 
             {/* Tab: Download - always rendered to keep iframe state but hidden via css */}
-            <div className={`bg-neutral-900/50 border border-neutral-800 rounded-2xl p-4 sm:p-6 gap-6 ${activeTab === "download" ? "flex flex-col" : "hidden"}`}>
-              <div className="flex flex-col gap-2">
-                <h3 className="text-base sm:text-lg font-medium text-white">Generar audio MP3</h3>
-                <p className="text-xs sm:text-sm text-neutral-400">
-                  Descarga el audio original en formato MP3 directamente desde nuestros servidores. Una vez descargado, dirígete al <b>Paso 2</b> para inyectar la información y carátula.
-                </p>
+            <div className={`bg-neutral-900/50 border border-neutral-800 rounded-2xl p-4 sm:p-6 gap-4 ${activeTab === "download" ? "flex flex-col" : "hidden"}`}>
+              <p className="text-xs sm:text-sm text-neutral-300">
+                Descarga el audio base gratuitamente desde este integrador externo, y luego dirígete a la pestaña <b>Paso 2</b> para inyectar los metadatos.
+              </p>
+              <div className="w-full h-[400px] sm:h-[600px] border border-neutral-800 rounded-xl overflow-hidden bg-white">
+                <iframe 
+                  src={y2mateUrl} 
+                  className="w-full h-full border-0" 
+                  title="Y2mate Download Pannel"
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
+                />
               </div>
-
-              {ytInfo && (
-                <div className="flex flex-col sm:flex-row bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden">
-                  <div className="relative w-full sm:w-48 aspect-video sm:aspect-auto">
-                    <img src={ytInfo.thumbnail} alt="Thumbnail" className="w-full h-full object-cover" />
-                    <div className="absolute bottom-2 right-2 bg-black/80 px-2 py-1 rounded text-[10px] font-mono text-white font-medium">
-                      {ytInfo.duration}
-                    </div>
-                  </div>
-                  <div className="p-4 flex flex-col justify-center gap-2 flex-1 min-w-0">
-                    <h4 className="text-sm font-medium text-white truncate" title={ytInfo.title}>
-                      {ytInfo.title}
-                    </h4>
-                    <div className="flex items-center gap-3 text-xs text-neutral-500">
-                      <span className="flex items-center gap-1.5"><Search className="w-3.5 h-3.5" />{ytInfo.uploader}</span>
-                      <span className="flex items-center gap-1.5"><Search className="w-3.5 h-3.5 opacity-0 absolute" />{ytInfo.view_count} vistas</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={handleDownloadBase}
-                disabled={loadingDownload || !ytInfo}
-                className="w-full flex items-center justify-center gap-3 bg-white text-black font-semibold px-4 py-3 sm:px-6 sm:py-4 rounded-xl hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-white/50 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none text-sm sm:text-base shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-              >
-                {loadingDownload ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>{downloadProgress}</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-5 h-5" />
-                    <span>Descargar MP3 Base (128 kbps)</span>
-                  </>
-                )}
-              </button>
             </div>
 
             {/* Tab: Tag - always rendered but hidden via css */}
